@@ -80,14 +80,14 @@ HOOKS = [
      "};"),
     ("create", "ring = findViewById(R.id.ring);", "after",
      'popOn = prefs.getBoolean("pop_on", true);\npop = new Pop(this, page, dockBand);'),
-    ("focus", "if (old != null && old != v) scaleTo(old, 1f); focusedView = v;", "after", "popSync();"),
+    ("focus", "focusedView = v;", "after", "popSync();"),
     ("dock rebuilt", "dock.removeAllViews(); dockTiles.clear();", "after",
      "if (pop != null) pop.release();   // the tiles are new: pop the character up again where they are now\npopLast = -1;"),
     ("menu opens", "zone = Z_MENU; focusMenu(0);", "sub", "zone = Z_MENU;\npopSync();\nfocusMenu(0);"),
     ("move starts", "holdFired = true; moving = true;", "sub", "holdFired = true;\nmoving = true;\npopSync();"),
     ("move ends", "if (!moving) return; moving = false;", "sub", "if (!moving) return;\nmoving = false;\npopSync();"),
     ("popSync", "private void focusDock(int i) {", "before", POPSYNC),
-    ("setting", 'setStatus(ds[0], n + " apps"); reloadApps(); }, true);', "after",
+    ("setting", 'setStatus(da, dockCount + " in the dock");', "after",
      'final View[] pp = new View[1];\n'
      'pp[0] = addRow("Pop-up characters", popOn ? "On" : "Off", () -> {\n'
      '    popOn = !popOn;\n'
@@ -96,7 +96,7 @@ HOOKS = [
      '}, true);'),
     ("stop", "protected void onStop() { super.onStop();", "after",
      "if (pop != null) pop.release();\npicksRow.removeCallbacks(popEase);\npicksRow.setAlpha(1f);\npopLast = -1;"),
-    ("resume", "inFront = true; root.post(this::snapRing);", "after",
+    ("resume", "root.post(this::snapRing);", "after",
      "root.post(this::popSync);   // back on the home screen: pop the character up again"),
 ]
 
