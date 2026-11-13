@@ -1,0 +1,96 @@
+name: Build Talkies with the mods
+
+# Every night (and when the mods change, or when you press Run workflow): take the newest Talkies release, add the mods,
+# build it, sign it with YOUR key and publish it as a release. Nothing happens when that exact Talkies + mods build exists.
+on:
+  schedule:
+    - cron: "23 3 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Build even if nothing changed"
+        type: boolean
+        default: false
+  push:
+    branches: [main]
+    paths: ["mods/**", ".github/workflows/build-talkies.yml"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      UPSTREAM: rajupp/talkies
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Newest Talkies, and is it built already?
+        id: plan
+        run: |
+          set -euo pipefail
+          TAG=$(curl -sf "https://api.github.com/repos/$UPSTREAM/releases/latest" | jq -r .tag_name)
+          if [ -z "$TAG" ] || [ "$TAG" = null ]; then echo "Could not read the newest Talkies release"; exit 1; fi
+          BASE="$TAG+$(git rev-parse HEAD:mods)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          if [ "${{ inputs.force }}" != "true" ] && gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" --jq '.[].body' | grep -qF "base:$BASE"; then
+            echo "Already built: $BASE"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Get Talkies
+        if: steps.plan.outputs.skip == 'false'
+        run: git clone --depth 1 --branch "${{ steps.plan.outputs.tag }}" "https://github.com/$UPSTREAM.git" talkies
+
+      - name: Signing key
+        if: steps.plan.outputs.skip == 'false'
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "$KEYSTORE_B64" ]; then echo "Add the four signing secrets first (see README.md, step 2)"; exit 1; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/mods.jks"
+          CERT=$(keytool -list -v -keystore "$RUNNER_TEMP/mods.jks" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" | awk '/SHA256:/{print $2; exit}' | tr -d ':' | tr 'A-F' 'a-f')
+          echo "CERT=$CERT" >> "$GITHUB_ENV"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' "$RUNNER_TEMP/mods.jks" "$KEYSTORE_PASSWORD" "$KEY_ALIAS" "$KEY_PASSWORD" > talkies/release.properties
+
+      - name: Add the mods
+        if: steps.plan.outputs.skip == 'false'
+        run: python3 mods/apply_mods.py talkies --repo "$GITHUB_REPOSITORY" --cert "$CERT" --build "${{ github.run_number }}"
+
+      - uses: actions/setup-java@v4
+        if: steps.plan.outputs.skip == 'false'
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        if: steps.plan.outputs.skip == 'false'
+
+      - name: Build
+        if: steps.plan.outputs.skip == 'false'
+        working-directory: talkies
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease
+          cp app/build/outputs/apk/release/app-release.apk ../talkies.apk
+          ls -l ../talkies.apk
+
+      - name: Publish
+        if: steps.plan.outputs.skip == 'false'
+        run: |
+          set -euo pipefail
+          VER=$(grep -oP "versionName '\K[^']+" talkies/app/build.gradle)
+          gh release create "v$VER" talkies.apk --title "Talkies $VER with mods" \
+            --notes "Talkies ${{ steps.plan.outputs.tag }} plus the mods. Install with Talkies Mods, or from Talkies > Settings > Updates.
+
+          base:${{ steps.plan.outputs.base }}"

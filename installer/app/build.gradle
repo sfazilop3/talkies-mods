@@ -1,0 +1,39 @@
+plugins { id 'com.android.application' }
+
+android {
+    namespace 'com.talkiesmods.installer'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'com.talkiesmods.installer'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0'
+        // Which repository's releases to install. The GitHub build passes -PmodsRepo=<your user>/<this repo>.
+        def repo = project.findProperty('modsRepo') ?: 'YOUR_USER/talkies-mods'
+        buildConfigField 'String', 'MODS_REPO', '"' + repo + '"'
+    }
+    buildFeatures { buildConfig true }
+    // Same key as the Talkies build when release.properties exists (the GitHub build writes it); otherwise the debug key.
+    def props = new Properties()
+    def releaseFile = rootProject.file('release.properties')
+    if (releaseFile.exists()) releaseFile.withInputStream { props.load(it) }
+    signingConfigs {
+        if (props.storeFile) {
+            release {
+                storeFile file(props.storeFile)
+                storePassword props.storePassword
+                keyAlias props.keyAlias
+                keyPassword props.keyPassword
+            }
+        }
+    }
+    buildTypes {
+        release { signingConfig props.storeFile ? signingConfigs.release : signingConfigs.debug }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+// No libraries: Android's own framework only.
