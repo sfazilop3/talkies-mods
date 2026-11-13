@@ -72,7 +72,7 @@ private void popSync() {
 '''
 
 HOOKS = [
-    ("fields", "private HighlightView ring;", "after",
+    ("fields", "private boolean inFront;", "after",
      "// balloon-mods: pop-up characters over the dock (Pop), their setting, and the dock position they last popped for.\n"
      "private Pop pop;\nprivate boolean popOn = true;\nprivate int popLast = -1;\n"
      "private final Runnable popEase = () -> {\n"
