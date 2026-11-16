@@ -11,7 +11,11 @@ import android.animation.ValueAnimator;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Canvas;
 import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.view.Gravity;
 import android.view.View;
@@ -47,6 +51,8 @@ final class Pop {
         ImageView person;
         TextView[] sparks = new TextView[SPARKS];
         GradientDrawable haloShape;
+        HatView hat;
+        TextView bubble;
         AnimatorSet enter;
         ObjectAnimator bob, sway;
         int token;
@@ -57,6 +63,11 @@ final class Pop {
     private final FrameLayout layer;
     private final Actor[] actors = new Actor[IMAGES.length];
     private int shown = -1, shownX = Integer.MIN_VALUE;
+    private boolean bday;
+    private String bname = "";
+    private int hatSlot, sayN;
+    private static final String[] SAY = {"Happy birthday, NAME!", "Let's party, NAME!", "You're 8 today!", "Make a wish!",
+            "Cake time soon!", "You're awesome, NAME!", "Pop some balloons!", "Hip hip hooray!"};
 
     /** {@code layer} is added to {@code page} just before {@code before} (the dock band), so characters rise from behind it. */
     Pop(Context c, FrameLayout page, View before) {
@@ -71,6 +82,34 @@ final class Pop {
     }
 
     private int px(float v) { return Math.round(v * dp); }
+
+    /** Birthday on: the character in dock position {@code hatSlot} + 1 wears a party hat, and each says a line with the name. */
+    void setBirthday(boolean on, String name, int hatSlot) {
+        bday = on;
+        bname = name == null ? "" : name;
+        this.hatSlot = hatSlot;
+        if (!on) {
+            for (Actor a : actors) {
+                if (a == null) continue;
+                a.hat.setVisibility(View.GONE);
+                a.bubble.animate().cancel();
+                a.bubble.setAlpha(0f);
+            }
+        }
+    }
+
+    private void decorate(final Actor a, final int slot) {
+        a.hat.setVisibility(slot == hatSlot ? View.VISIBLE : View.GONE);
+        a.bubble.animate().cancel();
+        a.bubble.setText(SAY[sayN++ % SAY.length].replace("NAME", bname));
+        a.bubble.setAlpha(0f);
+        a.bubble.setScaleX(0.3f);
+        a.bubble.setScaleY(0.3f);
+        a.bubble.animate().setStartDelay(800).alpha(1f).scaleX(1f).scaleY(1f).setDuration(250).start();
+        a.bubble.postDelayed(() -> {
+            if (shown == slot) a.bubble.animate().setStartDelay(0).alpha(0f).setDuration(300).start();
+        }, 3300);
+    }
 
     /** Dock position → character: 0..2 the girls, then the pups, round and round. */
     static int slotFor(int dockIdx) {
@@ -138,6 +177,7 @@ final class Pop {
         a.pose.setAlpha(0f);
         set.start();
         burst(a, slot);
+        if (bday) decorate(a, slot);
     }
 
     /** The current character floats away (on a move to another app, or when focus leaves the dock). */
@@ -147,6 +187,8 @@ final class Pop {
         shown = -1;
         shownX = Integer.MIN_VALUE;
         if (a == null) return;
+        a.bubble.animate().cancel();
+        a.bubble.setAlpha(0f);
         final int mine = ++a.token;
         if (a.enter != null) a.enter.cancel();
         stopIdle(a);
@@ -169,6 +211,8 @@ final class Pop {
             stopIdle(a);
             a.pose.animate().cancel();
             for (TextView s : a.sparks) s.animate().cancel();
+            a.bubble.animate().cancel();
+            a.bubble.setAlpha(0f);
             a.box.setVisibility(View.INVISIBLE);
             resetPose(a);
         }
@@ -236,6 +280,29 @@ final class Pop {
             a.pose.addView(s, lp);
             a.sparks[i] = s;
         }
+        // Birthday extras, hidden until Pop.setBirthday(true, ...).
+        a.hat = new HatView(ctx);
+        a.hat.setVisibility(View.GONE);
+        a.hat.setRotation(10f);
+        a.hat.setTranslationX(px(6));
+        FrameLayout.LayoutParams hl = new FrameLayout.LayoutParams(px(40), px(52), Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        hl.bottomMargin = px(HEIGHT_DP[slot]) - px(14);
+        a.pose.addView(a.hat, hl);
+        a.bubble = new TextView(ctx);
+        a.bubble.setTextColor(0xFF222222);
+        a.bubble.setTextSize(11);
+        a.bubble.setTypeface(Typeface.DEFAULT_BOLD);
+        GradientDrawable bg = new GradientDrawable();
+        bg.setColor(0xFFFFFFFF);
+        bg.setCornerRadius(px(12));
+        a.bubble.setBackground(bg);
+        a.bubble.setPadding(px(9), px(5), px(9), px(5));
+        a.bubble.setAlpha(0f);
+        a.bubble.setTranslationX(px(66));
+        FrameLayout.LayoutParams bl = new FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL);
+        bl.bottomMargin = px(HEIGHT_DP[slot] * 0.66f);
+        a.pose.addView(a.bubble, bl);
         actors[slot] = a;
         return a;
     }
@@ -318,6 +385,34 @@ final class Pop {
             s.animate().setStartDelay(170 + k * 20L).withStartAction(() -> s.setAlpha(1f))
                     .translationX((float) (Math.cos(ang) * dist)).translationY((float) (Math.sin(ang) * dist))
                     .rotation(180f).alpha(0f).setDuration(750).start();
+        }
+    }
+
+    /** A party hat. */
+    private static final class HatView extends View {
+        private final Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+
+        HatView(Context c) { super(c); }
+
+        @Override protected void onDraw(Canvas c) {
+            float w = getWidth(), h = getHeight();
+            path.reset();
+            path.moveTo(w / 2, h * 0.05f);
+            path.lineTo(w * 0.04f, h * 0.97f);
+            path.lineTo(w * 0.96f, h * 0.97f);
+            path.close();
+            p.setStyle(Paint.Style.FILL);
+            p.setColor(0xFFFF4FA3);
+            c.drawPath(path, p);
+            p.setColor(0xFFFFD23F);
+            c.drawRect(w * 0.27f, h * 0.5f, w * 0.73f, h * 0.6f, p);
+            c.drawRect(w * 0.16f, h * 0.76f, w * 0.84f, h * 0.86f, p);
+            c.drawCircle(w / 2, h * 0.07f, w * 0.1f, p);
+            p.setStyle(Paint.Style.STROKE);
+            p.setStrokeWidth(w * 0.04f);
+            p.setColor(0xFF7A1B52);
+            c.drawPath(path, p);
         }
     }
 

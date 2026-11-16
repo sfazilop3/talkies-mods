@@ -65,6 +65,34 @@ Talkies on a new TV.
 - **To someone who wants their own:** send the repository link. They fork it, add their own four secrets, run the two
   workflows; their installer app then points at their fork by itself.
 
+## The birthday surprise
+
+Hidden until you start it. Nothing shows in any menu. From Talkies' home screen, with each key within 4 seconds of the last:
+
+- **up, up, down, down, then OK**: the whole surprise: intro, the balloon game (the letters of her name), the gift, three riddles,
+  "Level 8 unlocked" with the parade and the Happy Birthday song, then the cake to blow out.
+- **left, left, right, right, then OK**: "Cake time!" with the countdown, then the cake.
+
+From a PC (set her name once, then start it any time):
+
+```
+adb shell am start -n com.techpp.glass/.BirthdayActivity --es name "Her name" --es time "18:30" --ez only true
+adb shell am start -n com.techpp.glass/.BirthdayActivity
+adb shell am start -n com.techpp.glass/.BirthdayActivity --es scene alert
+```
+
+`scene` can be `game`, `riddle`, `level`, `cake` or `alert`. Back steps out; Back twice quickly always leaves. It works offline.
+The page is `mods/files/app/src/main/assets/birthday.html`; the parade uses the bundled characters unless you replace them
+(the page is one file; edit it freely). The riddles and the song lines are inside it.
+
+**The home screen dresses up too**, from the moment the surprise starts until midnight: flags across the top, a greeting with her
+name, soft colour behind everything, a few balloons drifting up, a speech bubble with her name from each pop-up character, a party hat
+on one character (the first dock app's; `--ei hat 1 --ez only true` picks another), and the cat (walks along the dock to the selected app
+and sits on it). Turn it off early: `adb shell am start -n com.techpp.glass/.BirthdayActivity --ez decor false --ez only true`.
+
+The cat's pictures are optional and not in this repository: put `walk.webp` (9 frames), `sit.webp` (20) and `idle.webp` (17), each frame 190 x 160 px side by
+side, in `mods/files/app/src/main/assets/cat/`. Without them everything else still shows.
+
 ## Your own pictures
 
 The bundled characters (`mods/files/app/src/main/res/drawable-nodpi/pop_char1..7.webp`) are original drawings. Your own
@@ -75,7 +103,8 @@ adb push mine.png /sdcard/Android/data/com.techpp.glass/files/pop/char1.png
 ```
 
 `char1` is the first dock app, `char2` the second, and so on up to `char7`. Delete the file to go back to the bundled one.
-Switch the characters off or on in Talkies > Settings > Pop-up characters.
+Switch the characters off or on in Talkies > Settings > Pop-up characters. Two more switches sit in the same menu:
+**Long-press app menu** (off: holding OK on the dock or in All apps does nothing) and **Cat animation** (off: the birthday cat stays away).
 
 ## If a Talkies update breaks a hook
 
@@ -90,4 +119,3 @@ Try it on your PC any time: `python mods/apply_mods.py path\to\talkies` (safe to
 - Scheduled builds stop after 60 days with no activity in the repository; press Run workflow to wake them.
 - Android 12 and newer can sometimes update an app its installer put there without a question; older TVs always ask.
 - Talkies itself is MIT licensed (see its repository); the mods here are MIT too. Nothing from Talkies is stored in this repo.
-- Not included yet: the birthday features. They would be more files in `mods/files` and a few more hook lines.

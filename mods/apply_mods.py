@@ -5,7 +5,8 @@
 
 What it does
   1. copies the new files (Pop.java and the bundled characters) into the folder;
-  2. adds a handful of one-line hooks to HomeActivity.java, found by the code around them, not by line number;
+  2. adds a handful of one-line hooks to HomeActivity.java and AndroidManifest.xml, found by the code around them,
+     not by line number;
   3. --repo / --cert: points Talkies' own updater (Settings -> Updates) at your releases instead of the original ones;
   4. --build N: makes versionName "<original>.N" and versionCode "<original>*1000+N", so every build is a real update.
 Safe to run twice. If a hook can't be placed it says which one and changes nothing.
@@ -44,6 +45,15 @@ def put(text, name, anchor, kind, code):
     return text[:m.start()] + new + text[m.end():]
 
 
+MANIFEST_ACTIVITY = '''<!-- balloon-mods: the birthday surprise screen -->
+<activity
+    android:name=".BirthdayActivity"
+    android:exported="true"
+    android:launchMode="singleTop"
+    android:screenOrientation="landscape"
+    android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+    android:configChanges="keyboard|keyboardHidden|navigation|screenSize|smallestScreenSize|screenLayout|orientation|uiMode" />'''
+
 POPSYNC = '''/**
  * balloon-mods: the pop-up characters follow the dock. Focus on a dock app pops its character up behind the tile;
  * anywhere else (the icons, picks, All apps, a menu, or while moving an app) the character floats away. The picks
@@ -55,6 +65,7 @@ private void popSync() {
     View t = on ? dockTiles.get(dockIdx) : null;
     if (t == null || t.getWidth() == 0) {
         pop.hide(1);
+        if (bday != null) bday.blur();
         picksRow.removeCallbacks(popEase);
         picksRow.animate().setStartDelay(0).alpha(1f).setDuration(220).start();
         return;
@@ -65,6 +76,7 @@ private void popSync() {
     int bottom = dockBand.getTop() + dock.getTop() + t.getTop() + t.getHeight() / 4;
     int color = dockIdx < apps.size() ? apps.get(dockIdx).glowColor(pm) : 0xFF8A8F98;
     pop.show(dockIdx, color, cx, bottom, dir);
+    if (bday != null) bday.focus(t, cx);
     picksRow.removeCallbacks(popEase);
     picksRow.animate().setStartDelay(0).alpha(0.18f).setDuration(220).start();
     picksRow.postDelayed(popEase, 3000);
@@ -72,32 +84,56 @@ private void popSync() {
 '''
 
 HOOKS = [
-    ("fields", "private boolean inFront;", "after",
+    ("home", "fields", "private boolean inFront;", "after",
      "// balloon-mods: pop-up characters over the dock (Pop), their setting, and the dock position they last popped for.\n"
-     "private Pop pop;\nprivate boolean popOn = true;\nprivate int popLast = -1;\n"
+     "private Pop pop;\nprivate BirthdayDecor bday;\nprivate boolean popOn = true, catOn = true, holdMenuOn = true;\nprivate int popLast = -1;\n"
      "private final Runnable popEase = () -> {\n"
      "    if (pop != null && popOn && zone == Z_DOCK) picksRow.animate().setStartDelay(0).alpha(0.5f).setDuration(400).start();\n"
      "};"),
-    ("create", "ring = findViewById(R.id.ring);", "after",
-     'popOn = prefs.getBoolean("pop_on", true);\npop = new Pop(this, page, dockBand);'),
-    ("focus", "focusedView = v;", "after", "popSync();"),
-    ("dock rebuilt", "dock.removeAllViews(); dockTiles.clear();", "after",
+    ("home", "create", "ring = findViewById(R.id.ring);", "after",
+     'popOn = prefs.getBoolean("pop_on", true);\ncatOn = prefs.getBoolean("cat_on", true);\n'
+     'holdMenuOn = prefs.getBoolean("hold_menu_on", true);\n'
+     'pop = new Pop(this, page, dockBand);\nbday = new BirthdayDecor(this, (FrameLayout) root, page, dockBand, pop);\n'
+     'bday.setCatOn(catOn);'),
+    ("home", "focus", "focusedView = v;", "after", "popSync();"),
+    ("home", "dock rebuilt", "dock.removeAllViews(); dockTiles.clear();", "after",
      "if (pop != null) pop.release();   // the tiles are new: pop the character up again where they are now\npopLast = -1;"),
-    ("menu opens", "zone = Z_MENU; focusMenu(0);", "sub", "zone = Z_MENU;\npopSync();\nfocusMenu(0);"),
-    ("move starts", "holdFired = true; moving = true;", "sub", "holdFired = true;\nmoving = true;\npopSync();"),
-    ("move ends", "if (!moving) return; moving = false;", "sub", "if (!moving) return;\nmoving = false;\npopSync();"),
-    ("popSync", "private void focusDock(int i) {", "before", POPSYNC),
-    ("setting", 'setStatus(da, dockCount + " in the dock");', "after",
+    ("home", "menu opens", "zone = Z_MENU; focusMenu(0);", "sub", "zone = Z_MENU;\npopSync();\nfocusMenu(0);"),
+    ("home", "move starts", "holdFired = true; moving = true;", "sub", "holdFired = true;\nmoving = true;\npopSync();"),
+    ("home", "move ends", "if (!moving) return; moving = false;", "sub", "if (!moving) return;\nmoving = false;\npopSync();"),
+    ("home", "popSync", "private void focusDock(int i) {", "before", POPSYNC),
+    ("home", "setting", 'setStatus(da, dockCount + " in the dock"); }, true);', "after",
      'final View[] pp = new View[1];\n'
      'pp[0] = addRow("Pop-up characters", popOn ? "On" : "Off", () -> {\n'
      '    popOn = !popOn;\n'
      '    prefs.edit().putBoolean("pop_on", popOn).apply();\n'
      '    setStatus(pp[0], popOn ? "On" : "Off");\n'
+     '}, true);\n'
+     'final View[] hp = new View[1];\n'
+     'hp[0] = addRow("Long-press app menu", holdMenuOn ? "On" : "Off", () -> {\n'
+     '    holdMenuOn = !holdMenuOn;\n'
+     '    prefs.edit().putBoolean("hold_menu_on", holdMenuOn).apply();\n'
+     '    setStatus(hp[0], holdMenuOn ? "On" : "Off");\n'
+     '}, true);\n'
+     'final View[] cp = new View[1];\n'
+     'cp[0] = addRow("Cat animation", catOn ? "On" : "Off", () -> {\n'
+     '    catOn = !catOn;\n'
+     '    prefs.edit().putBoolean("cat_on", catOn).apply();\n'
+     '    setStatus(cp[0], catOn ? "On" : "Off");\n'
+     '    if (bday != null) bday.setCatOn(catOn);\n'
      '}, true);'),
-    ("stop", "protected void onStop() { super.onStop();", "after",
-     "if (pop != null) pop.release();\npicksRow.removeCallbacks(popEase);\npicksRow.setAlpha(1f);\npopLast = -1;"),
-    ("resume", "root.post(this::snapRing);", "after",
-     "root.post(this::popSync);   // back on the home screen: pop the character up again"),
+    ("home", "hold menu", "if (zone == Z_DOCK || zone == Z_GRID) openAppMenu();", "sub",
+     "if (zone == Z_DOCK || zone == Z_GRID) {\n"
+     "    if (holdMenuOn) openAppMenu();   // balloon-mods: Talkies settings can switch this off\n"
+     "}"),
+    ("home", "stop", "protected void onStop() { super.onStop();", "after",
+     "if (pop != null) pop.release();\nif (bday != null) bday.release();\npicksRow.removeCallbacks(popEase);\npicksRow.setAlpha(1f);\npopLast = -1;"),
+    ("home", "resume", "root.post(this::snapRing);", "after",
+     "if (bday != null) bday.refresh();   // the birthday look, until midnight\nroot.post(this::popSync);   // back on the home screen: pop the character up again"),
+    # the secret remote codes that start the birthday surprise (BirthdaySecret): up up down down OK, left left right right OK
+    ("home", "secret code", "public boolean dispatchKeyEvent(KeyEvent e) {", "after",
+     "if (BirthdaySecret.feed(this, e)) return true;   // balloon-mods"),
+    ("manifest", "birthday screen", "</application>", "before", MANIFEST_ACTIVITY),
 ]
 
 
@@ -123,23 +159,33 @@ def main():
         sys.exit(f"{home} not found: is {root} a Talkies source folder?")
 
     # 1. hooks first, so nothing is touched when one fails
-    text, crlf = read(home)
-    if MARK in text:
-        print("HomeActivity.java: hooks already there")
-    else:
-        failed = []
-        for name, anchor, kind, code in HOOKS:
+    targets = {"home": (home, MARK), "manifest": (root / "app/src/main/AndroidManifest.xml", "BirthdayActivity")}
+    done, failed = {}, []
+    for key, (path, marker) in targets.items():
+        if not path.is_file():
+            sys.exit(f"{path} not found: is {root} a Talkies source folder?")
+        text, crlf = read(path)
+        if marker in text:
+            print(f"{path.name}: hooks already there")
+            continue
+        n = 0
+        for f, name, anchor, kind, code in HOOKS:
+            if f != key:
+                continue
             try:
                 text = put(text, name, anchor, kind, code)
+                n += 1
             except LookupError as e:
                 failed.append(str(e))
-        if failed:
-            print("These hooks could not be placed (Talkies changed these lines). Nothing was changed.")
-            for f in failed:
-                print("  -", f)
-            sys.exit(2)
-        write(home, text, crlf)
-        print(f"HomeActivity.java: {len(HOOKS)} hooks added")
+        done[key] = (path, text, crlf, n)
+    if failed:
+        print("These hooks could not be placed (Talkies changed these lines). Nothing was changed.")
+        for f in failed:
+            print("  -", f)
+        sys.exit(2)
+    for path, text, crlf, n in done.values():
+        write(path, text, crlf)
+        print(f"{path.name}: {n} hooks added")
 
     # 2. new files
     for src in sorted((HERE / "files").rglob("*")):
