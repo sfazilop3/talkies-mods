@@ -102,8 +102,13 @@ The page is `mods/files/app/src/main/assets/birthday.html`; the parade uses the 
 
 **The home screen dresses up too**, from the moment the surprise starts until midnight: flags across the top, a greeting with her
 name, soft colour behind everything, a few balloons drifting up, a speech bubble with her name from each pop-up character, a party hat
-on one character (the first dock app's; `--ei hat 1 --ez only true` picks another), and the cat (walks along the dock to the selected app
-and sits on it). Turn it off early: `adb shell am start -n com.techpp.glass/.BirthdayActivity --ez decor false --ez only true`.
+on the birthday girl (see below), and the cat (walks along the dock to the selected app and sits on it). Turn it off early:
+`adb shell am start -n com.techpp.glass/.BirthdayActivity --ez decor false --ez only true`.
+
+**Talkies > Settings > Birthday girl** is where she is set up: her **Name** (used by the greeting, the speech bubbles and the birthday
+page), a **Picture** picked from this TV (the same picture picker as the wallpaper; saved on the TV as
+`Android/data/com.techpp.glass/files/bday/girl.png`), and **which character is her** (Girl 1–3, Pup 1–4). That character rises from
+behind her dock tile with her picture and wears the party hat while the birthday look is on; the cat no longer wears one.
 
 The cat's pictures are optional and live in the private pictures repository (see step 2): `walk.webp` (9 frames), `sit.webp` (20) and `idle.webp` (17), each frame 190 x 160 px side by
 side, in `app/src/main/assets/cat/`. Without them everything else still shows.

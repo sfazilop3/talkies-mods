@@ -83,10 +83,143 @@ private void popSync() {
 }
 '''
 
+BDAYTOOLS = '''// balloon-mods: the birthday girl — her name, her picture from this TV, and which character is her.
+private static final String BDAY_PHOTO = "#birthday-girl";
+
+private android.content.SharedPreferences birthdayPrefs() {
+    return getSharedPreferences(BirthdayDecor.PREFS, MODE_PRIVATE);
+}
+
+private int birthdayChar() {
+    int n = birthdayPrefs().getInt("hat", 0);
+    return n < 0 || n > 6 ? 0 : n;
+}
+
+private String birthdayName() {
+    return birthdayPrefs().getString("name", "Birthday Girl");
+}
+
+/** Her own picture (files/bday/girl.png), or null while the app's picture is used. */
+private File birthdayPhoto() {
+    File dir = getExternalFilesDir(null);
+    if (dir == null) return null;
+    for (String ext : new String[]{"png", "jpg", "webp"}) {
+        File f = new File(dir, "bday/girl." + ext);
+        if (f.isFile()) return f;
+    }
+    return null;
+}
+
+private static String birthdayCharName(int i) {
+    return i < 3 ? "Girl " + (i + 1) : "Pup " + (i - 2);
+}
+
+private String birthdayGirlLabel() {
+    String n = birthdayName();
+    return (n.isEmpty() || "Birthday Girl".equals(n) ? "" : n + "  ·  ") + birthdayCharName(birthdayChar());
+}
+
+private int birthdayCharArt(int i) {
+    switch (i) {
+        case 1: return R.drawable.pop_char2;
+        case 2: return R.drawable.pop_char3;
+        case 3: return R.drawable.pop_char4;
+        case 4: return R.drawable.pop_char5;
+        case 5: return R.drawable.pop_char6;
+        case 6: return R.drawable.pop_char7;
+        default: return R.drawable.pop_char1;
+    }
+}
+
+/** Talkies settings → Birthday girl: her name, a picture of her from this TV, and which character wears the hat. */
+private void openBirthdayGirl() {
+    beginMenu(settingsAt, "Birthday girl  ·  hat, name and picture");
+    final View[] nm = new View[1];
+    nm[0] = addRow("Name", birthdayName(), () -> askText("Birthday girl's name",
+            "The greeting and the characters' speech bubbles say her name.",
+            birthdayName(), false, !"Birthday Girl".equals(birthdayName()), text -> {
+                if (text.isEmpty()) text = "Birthday Girl";
+                birthdayPrefs().edit().putString("name", text).apply();
+                setStatus(nm[0], text);
+                if (bday != null) bday.refresh();
+                if (birthdayRow != null) setStatus(birthdayRow, birthdayGirlLabel());
+            }), true);
+    File own = birthdayPhoto();
+    final View[] pr = new View[1];
+    pr[0] = addRow("Picture", own != null ? "your picture" : "the app's picture", () -> {
+        pictureFor = BDAY_PHOTO;
+        openTvPictures();
+    }, false);
+    if (own != null) addRow("Use the app's picture again", null, () -> {
+        own.delete();
+        setStatus(pr[0], "the app's picture");
+        if (pop != null) pop.reloadArt();
+        if (bday != null) bday.refresh();
+        Toast.makeText(this, "The app's picture is back", Toast.LENGTH_SHORT).show();
+    }, true);
+    addMenuHeading("Who wears the party hat");
+    final View[] rows = new View[7];
+    for (int i = 0; i < rows.length; i++) {
+        final int n = i;
+        rows[i] = addRow(birthdayCharName(i), n == birthdayChar() ? "On" : null, () -> {
+            birthdayPrefs().edit().putInt("hat", n).apply();
+            for (int j = 0; j < rows.length; j++) setStatus(rows[j], j == n ? "On" : null);
+            if (pop != null) pop.reloadArt();
+            if (bday != null) bday.refresh();
+            if (birthdayRow != null) setStatus(birthdayRow, birthdayGirlLabel());
+        }, true);
+        addThumb(rows[i], Uri.parse("android.resource://" + getPackageName() + "/" + birthdayCharArt(i)));
+    }
+    showMenu(440);
+}
+
+/**
+ * Saves the picture picked for the birthday girl as files/bday/girl.png: 640 × 880, the whole picture with
+ * transparent edges, so it floats behind the dock tile like the bundled characters.
+ */
+private boolean saveBirthdayPhoto(java.util.function.Supplier<java.io.InputStream> open) {
+    final int w = 640, h = 880;
+    try {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        try (java.io.InputStream in = open.get()) { BitmapFactory.decodeStream(in, null, o); }
+        if (o.outWidth <= 0 || o.outHeight <= 0) return false;
+        o.inSampleSize = 1;
+        while (o.outWidth / (o.inSampleSize * 2) >= w && o.outHeight / (o.inSampleSize * 2) >= h) o.inSampleSize *= 2;
+        o.inJustDecodeBounds = false;
+        Bitmap src;
+        try (java.io.InputStream in = open.get()) { src = BitmapFactory.decodeStream(in, null, o); }
+        if (src == null) return false;
+        Bitmap out = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        float k = Math.min(w / (float) src.getWidth(), h / (float) src.getHeight());
+        float sw = src.getWidth() * k, sh = src.getHeight() * k;
+        new android.graphics.Canvas(out).drawBitmap(src, null,
+                new RectF((w - sw) / 2, (h - sh) / 2, (w + sw) / 2, (h + sh) / 2),
+                new android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG));
+        src.recycle();
+        File base = getExternalFilesDir(null);
+        if (base == null) return false;
+        File dir = new File(base, "bday");
+        if (!dir.isDirectory() && !dir.mkdirs()) return false;
+        File tmp = new File(dir, "girl.tmp");
+        try (java.io.FileOutputStream f = new java.io.FileOutputStream(tmp)) {
+            out.compress(Bitmap.CompressFormat.PNG, 100, f);
+        }
+        out.recycle();
+        for (String ext : new String[]{"jpg", "webp", "png"}) new File(dir, "girl." + ext).delete();
+        return tmp.renameTo(new File(dir, "girl.png"));
+    } catch (Exception | OutOfMemoryError e) {
+        Log.w(TAG, "Couldn't save her picture: " + e);
+        return false;
+    }
+}
+'''
+
+
 HOOKS = [
     ("home", "fields", "private boolean inFront;", "after",
      "// balloon-mods: pop-up characters over the dock (Pop), their setting, and the dock position they last popped for.\n"
-     "private Pop pop;\nprivate BirthdayDecor bday;\nprivate boolean popOn = true, catOn = true, holdMenuOn = true;\nprivate int popLast = -1;\n"
+     "private Pop pop;\nprivate BirthdayDecor bday;\nprivate boolean popOn = true, catOn = true, holdMenuOn = true;\nprivate int popLast = -1;\nprivate View birthdayRow;\n"
      "private final Runnable popEase = () -> {\n"
      "    if (pop != null && popOn && zone == Z_DOCK) picksRow.animate().setStartDelay(0).alpha(0.5f).setDuration(400).start();\n"
      "};"),
@@ -121,7 +254,8 @@ HOOKS = [
      '    prefs.edit().putBoolean("cat_on", catOn).apply();\n'
      '    setStatus(cp[0], catOn ? "On" : "Off");\n'
      '    if (bday != null) bday.setCatOn(catOn);\n'
-     '}, true);'),
+     '}, true);\n'
+     'birthdayRow = addRow("Birthday girl", birthdayGirlLabel(), this::openBirthdayGirl, false);'),
     ("home", "hold menu", "if (zone == Z_DOCK || zone == Z_GRID) openAppMenu();", "sub",
      "if (zone == Z_DOCK || zone == Z_GRID) {\n"
      "    if (holdMenuOn) openAppMenu();   // balloon-mods: Talkies settings can switch this off\n"
@@ -130,6 +264,21 @@ HOOKS = [
      "if (pop != null) pop.release();\nif (bday != null) bday.release();\npicksRow.removeCallbacks(popEase);\npicksRow.setAlpha(1f);\npopLast = -1;"),
     ("home", "resume", "root.post(this::snapRing);", "after",
      "if (bday != null) bday.refresh();   // the birthday look, until midnight\nroot.post(this::popSync);   // back on the home screen: pop the character up again"),
+    # the birthday girl's picture goes through the same "From this TV" picker as the wallpaper and tile images
+    ("home", "picture label", "return a != null ? a.label : pkg;", "sub",
+     "return a != null ? a.label : BDAY_PHOTO.equals(pkg) ? \"Birthday girl\" : pkg;"),
+    ("home", "picture saved", "private void pictureSaved(String pkg, boolean ok) {", "after",
+     "if (BDAY_PHOTO.equals(pkg)) {\n"
+     "    Toast.makeText(this, ok ? \"Her picture is on the home screen now\" : \"Couldn't use that picture\", Toast.LENGTH_SHORT).show();\n"
+     "    if (ok) {\n"
+     "        if (pop != null) pop.reloadArt();\n"
+     "        if (bday != null) bday.refresh();\n"
+     "    }\n"
+     "    return;\n"
+     "}"),
+    ("home", "picture save", "private boolean savePicture(java.util.function.Supplier<java.io.InputStream> open, String pkg) {", "after",
+     "if (BDAY_PHOTO.equals(pkg)) return saveBirthdayPhoto(open);"),
+    ("home", "birthday girl", "/** Talkies settings, by holding OK on the gear or from a remote button. */", "before", BDAYTOOLS),
     # the secret remote codes that start the birthday surprise (BirthdaySecret): up up down down OK, left left right right OK
     ("home", "secret code", "public boolean dispatchKeyEvent(KeyEvent e) {", "after",
      "if (BirthdaySecret.feed(this, e)) return true;   // balloon-mods"),

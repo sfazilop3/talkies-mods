@@ -34,8 +34,10 @@ import java.io.File;
  * (stretch, squash, a little overshoot, a few sparkles) and the previous one floats away.
  *
  * Dock position 1 to 7 each get their own character; further positions repeat the last four
- * (see {@link #slotFor}). The bundled pictures are res/drawable-nodpi/pop_char1..7.webp; see {@link #loadImage} to use your own. Views are built when first needed, nothing is
- * allocated while moving, and every animator is cancelled when the home screen stops (see {@link #release}).
+ * (see {@link #slotFor}). The bundled pictures are res/drawable-nodpi/pop_char1..7.webp; the birthday girl's own
+ * picture (files/bday/girl.png, picked in Talkies settings) replaces the character she was chosen for (see
+ * {@link #loadImage}). Views are built when first needed, nothing is allocated while moving, and every animator is
+ * cancelled when the home screen stops (see {@link #release}).
  */
 final class Pop {
     private static final int GIRLS = 3;
@@ -312,25 +314,59 @@ final class Pop {
      * on the TV as Android/data/com.techpp.glass/files/pop/char1.png ... char7.png, e.g.
      * adb push mine.png /sdcard/Android/data/com.techpp.glass/files/pop/char1.png
      * Nothing personal ever has to be in the app or in the repository.
+     * The birthday girl's picture (picked in Talkies settings) comes before all of them, for her character only.
      */
     private void loadImage(ImageView v, int slot) {
+        if (slot == bdayChar()) {
+            File girl = bdayPhoto();
+            Bitmap b = girl != null ? decode(girl, slot) : null;
+            if (b != null) { v.setImageBitmap(b); return; }
+        }
         File dir = ctx.getExternalFilesDir(null);
         if (dir != null) {
             for (String ext : new String[]{"png", "webp"}) {
                 File f = new File(dir, "pop/char" + (slot + 1) + "." + ext);
                 if (!f.isFile()) continue;
-                BitmapFactory.Options o = new BitmapFactory.Options();
-                o.inJustDecodeBounds = true;
-                BitmapFactory.decodeFile(f.getPath(), o);
-                int want = px(HEIGHT_DP[slot]) * 2, sample = 1;
-                while (o.outHeight / (sample * 2) >= want) sample *= 2;
-                o = new BitmapFactory.Options();
-                o.inSampleSize = sample;
-                Bitmap b = BitmapFactory.decodeFile(f.getPath(), o);
+                Bitmap b = decode(f, slot);
                 if (b != null) { v.setImageBitmap(b); return; }
             }
         }
         v.setImageResource(IMAGES[slot]);
+    }
+
+    private Bitmap decode(File f, int slot) {
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inJustDecodeBounds = true;
+        BitmapFactory.decodeFile(f.getPath(), o);
+        int want = px(HEIGHT_DP[slot]) * 2, sample = 1;
+        while (o.outHeight / (sample * 2) >= want) sample *= 2;
+        o = new BitmapFactory.Options();
+        o.inSampleSize = sample;
+        return BitmapFactory.decodeFile(f.getPath(), o);
+    }
+
+    /** The character the birthday girl was chosen for (Talkies settings), 0 when nothing was chosen. */
+    private int bdayChar() {
+        int n = ctx.getSharedPreferences(BirthdayDecor.PREFS, Context.MODE_PRIVATE).getInt("hat", 0);
+        return n < 0 || n >= IMAGES.length ? 0 : n;
+    }
+
+    /** Her own picture, when one was picked on this TV. */
+    private File bdayPhoto() {
+        File dir = ctx.getExternalFilesDir(null);
+        if (dir == null) return null;
+        for (String ext : new String[]{"png", "jpg", "webp"}) {
+            File f = new File(dir, "bday/girl." + ext);
+            if (f.isFile()) return f;
+        }
+        return null;
+    }
+
+    /** A picture or character was changed: read the pictures again (the views stay as they are). */
+    void reloadArt() {
+        for (int i = 0; i < actors.length; i++) {
+            if (actors[i] != null) loadImage(actors[i].person, i);
+        }
     }
 
     private static Keyframe kf(float fraction, float value, TimeInterpolator in) {

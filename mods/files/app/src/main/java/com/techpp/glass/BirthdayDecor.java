@@ -34,7 +34,8 @@ import java.util.Random;
 /**
  * The birthday look of the home screen, from the moment the surprise is started until midnight: flags across the top,
  * a greeting, soft colour behind everything, a few balloons drifting up, the pop-up characters' speech bubbles and party
- * hat (see Pop.setBirthday), and the cat, who walks along the dock to the selected app and sits on it.
+ * hat (see Pop.setBirthday), and the cat, who walks along the dock to the selected app and sits on it. The birthday
+ * girl is the character chosen in Talkies settings; her own picture (picked there too) replaces that character.
  * The cat's pictures are optional: assets/cat/walk.webp, sit.webp, idle.webp (frames 190 x 160 px side by side;
  * 9, 20 and 17 of them). Without them everything else still shows.
  */
@@ -73,6 +74,7 @@ final class BirthdayDecor {
     private TextView greeting;
     private CatView cat;
     private boolean catTried, catOn = true;
+    private int lastHat = Integer.MIN_VALUE;
     private final List<View> balloons = new ArrayList<>();
     private final List<ObjectAnimator> drifting = new ArrayList<>();
 
@@ -92,7 +94,9 @@ final class BirthdayDecor {
         SharedPreferences p = act.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         boolean on = active(act);
         String name = p.getString("name", "Birthday Girl");
-        pop.setBirthday(on, name, p.getInt("hat", 0));
+        int hat = p.getInt("hat", 0);
+        if (hat != lastHat) { lastHat = hat; pop.reloadArt(); }   // another character is the birthday girl now
+        pop.setBirthday(on, name, hat);
         if (on) {
             if (!shown) build();
             greeting.setText("HAPPY BIRTHDAY, " + name.toUpperCase() + "!");
@@ -265,8 +269,6 @@ final class BirthdayDecor {
         private final Bitmap[] strip;
         private final float scale, density;
         private final Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.ANTI_ALIAS_FLAG);
-        private final Paint hatPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path hat = new Path();
         private final Rect src = new Rect(), dst = new Rect();
         private int mode = IDLE, frame, dir = 1, face = 1;
         private float acc, x, tx, ground, lift, yo, targetYo;
@@ -388,30 +390,6 @@ final class BirthdayDecor {
             canvas.save();
             if (face < 0 && mode == WALK) canvas.scale(-1, 1, getWidth() / 2f, getHeight() / 2f);
             canvas.drawBitmap(strip[mode], src, dst, paint);
-            canvas.restore();
-            if (mode != WALK) partyHat(canvas);
-        }
-
-        /** A little party hat on its head while it sits. */
-        private void partyHat(Canvas canvas) {
-            float cx = 92 * scale, top = (PAD - 12) * scale, w = 17 * scale, h = 44 * scale;
-            canvas.save();
-            canvas.rotate(10, cx, top + h);
-            hat.reset();
-            hat.moveTo(cx, top);
-            hat.lineTo(cx - w, top + h);
-            hat.lineTo(cx + w, top + h);
-            hat.close();
-            hatPaint.setStyle(Paint.Style.FILL);
-            hatPaint.setColor(0xFFFF4FA3);
-            canvas.drawPath(hat, hatPaint);
-            hatPaint.setColor(0xFFFFD23F);
-            canvas.drawRect(cx - w * 0.6f, top + h * 0.55f, cx + w * 0.6f, top + h * 0.7f, hatPaint);
-            canvas.drawCircle(cx, top, 4 * scale, hatPaint);
-            hatPaint.setStyle(Paint.Style.STROKE);
-            hatPaint.setStrokeWidth(1.5f * scale);
-            hatPaint.setColor(0xFF7A1B52);
-            canvas.drawPath(hat, hatPaint);
             canvas.restore();
         }
     }
