@@ -23,9 +23,27 @@ jobs:
     runs-on: ubuntu-latest
     env:
       UPSTREAM: rajupp/talkies
+      ASSETS_REPO: sfazilop3/talkies-mods-private
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+
+      # The personal pictures (pop-up characters, cat frames, birthday page) live in a private repo so they never
+      # appear here. ASSETS_SSH_KEY is a read-only deploy key for that repo. Without it the build stops, rather than
+      # quietly publishing a build with the generic drawings.
+      - name: Personal art
+        id: art
+        env:
+          ASSETS_SSH_KEY: ${{ secrets.ASSETS_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$ASSETS_SSH_KEY" ]; then echo "Add the ASSETS_SSH_KEY secret (read-only deploy key for $ASSETS_REPO)"; exit 1; fi
+          install -m 600 /dev/null "$RUNNER_TEMP/art_key"
+          printf '%s\n' "$ASSETS_SSH_KEY" > "$RUNNER_TEMP/art_key"
+          ssh-keyscan -t ed25519 github.com >> "$RUNNER_TEMP/known_hosts" 2>/dev/null
+          GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/art_key -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts" \
+            git clone --depth 1 "git@github.com:$ASSETS_REPO.git" art
+          echo "sha=$(git -C art rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Newest Talkies, and is it built already?
         id: plan
@@ -33,7 +51,7 @@ jobs:
           set -euo pipefail
           TAG=$(curl -sf "https://api.github.com/repos/$UPSTREAM/releases/latest" | jq -r .tag_name)
           if [ -z "$TAG" ] || [ "$TAG" = null ]; then echo "Could not read the newest Talkies release"; exit 1; fi
-          BASE="$TAG+$(git rev-parse HEAD:mods)"
+          BASE="$TAG+$(git rev-parse HEAD:mods)+art:${{ steps.art.outputs.sha }}"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "base=$BASE" >> "$GITHUB_OUTPUT"
           if [ "${{ inputs.force }}" != "true" ] && gh api "repos/$GITHUB_REPOSITORY/releases?per_page=30" --jq '.[].body' | grep -qF "base:$BASE"; then
@@ -65,6 +83,10 @@ jobs:
       - name: Add the mods
         if: steps.plan.outputs.skip == 'false'
         run: python3 mods/apply_mods.py talkies --repo "$GITHUB_REPOSITORY" --cert "$CERT" --build "${{ github.run_number }}"
+
+      - name: Add the personal art
+        if: steps.plan.outputs.skip == 'false'
+        run: cp -a art/app/. talkies/app/
 
       - uses: actions/setup-java@v4
         if: steps.plan.outputs.skip == 'false'

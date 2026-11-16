@@ -43,6 +43,20 @@ Then on GitHub: repository > Settings > Secrets and variables > Actions > New re
 | `KEYSTORE_PASSWORD` | the keystore password you typed |
 | `KEY_ALIAS` | `mods` |
 | `KEY_PASSWORD` | the key password you typed (the same, if you pressed Enter) |
+| `ASSETS_SSH_KEY` | the private half of a read-only deploy key for your **private** pictures repository (next step) |
+
+**Your own pictures live in a private repository**, so this one can stay public without exposing them. Create a private
+repository (for example `talkies-mods-private`) laid out like the app tree:
+
+```
+app/src/main/res/drawable-nodpi/pop_char1..7.webp   the pop-up characters
+app/src/main/assets/cat/walk.webp, sit.webp, idle.webp
+app/src/main/assets/birthday.html                   the birthday page
+```
+
+In that repository: Settings > Deploy keys > Add deploy key, paste a new public key and leave **Allow write access**
+off. Then add the matching private key here as `ASSETS_SSH_KEY`. Every build clones the pictures over SSH and copies the
+`app/` tree over Talkies after the mods; without the key the build stops rather than quietly publishing the generic drawings.
 
 **3. Build.** Repository > Actions: run **Build Talkies with the mods**, then **Build the Talkies Mods installer app**
 (Run workflow). Each takes about 10 minutes. Then Releases has:
@@ -62,8 +76,9 @@ Talkies on a new TV.
 
 - **To someone who just wants it:** send the link to `TalkiesMods.apk` (Releases > Talkies Mods installer). They sideload
   one app and press Install. It installs whatever *this* repository last built.
-- **To someone who wants their own:** send the repository link. They fork it, add their own four secrets, run the two
-  workflows; their installer app then points at their fork by itself.
+- **To someone who wants their own:** send the repository link. They fork it, add their own five secrets (the signing four
+  plus `ASSETS_SSH_KEY` for their private pictures repository), run the two workflows; their installer app then points at
+  their fork by itself.
 
 ## The birthday surprise
 
@@ -90,13 +105,14 @@ name, soft colour behind everything, a few balloons drifting up, a speech bubble
 on one character (the first dock app's; `--ei hat 1 --ez only true` picks another), and the cat (walks along the dock to the selected app
 and sits on it). Turn it off early: `adb shell am start -n com.techpp.glass/.BirthdayActivity --ez decor false --ez only true`.
 
-The cat's pictures are optional and not in this repository: put `walk.webp` (9 frames), `sit.webp` (20) and `idle.webp` (17), each frame 190 x 160 px side by
-side, in `mods/files/app/src/main/assets/cat/`. Without them everything else still shows.
+The cat's pictures are optional and live in the private pictures repository (see step 2): `walk.webp` (9 frames), `sit.webp` (20) and `idle.webp` (17), each frame 190 x 160 px side by
+side, in `app/src/main/assets/cat/`. Without them everything else still shows.
 
 ## Your own pictures
 
-The bundled characters (`mods/files/app/src/main/res/drawable-nodpi/pop_char1..7.webp`) are original drawings. Your own
-pictures never go in the repository: put a transparent PNG or WebP (about 400 x 640, the head near the top) on the TV:
+The characters in this public repository (`mods/files/app/src/main/res/drawable-nodpi/pop_char1..7.webp`) are generic
+drawings, so forks and public builds carry nothing personal. Your own characters go in the private pictures repository.
+To try one picture without a rebuild, push it straight to the TV (transparent PNG or WebP, about 400 x 640, the head near the top):
 
 ```
 adb push mine.png /sdcard/Android/data/com.techpp.glass/files/pop/char1.png
